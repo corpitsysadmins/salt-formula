@@ -37,6 +37,7 @@ salt-master:
     {% if (salt_settings.pip_installs is defined) and salt_settings.pip_installs|length %}
   pip_state.installed:
     - pkgs: {{ salt_settings.pip_installs|json }}
+    - bin_env: {{ salt_settings.pip_bin_env }}
     {% endif %}
   file.recurse:
     - name: {{ salt_settings.config_path }}/master.d
