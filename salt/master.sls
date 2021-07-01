@@ -36,7 +36,7 @@ salt-master:
     {% endif %}
     {% if (salt_settings.git_installs is defined) and salt_settings.git_installs|length %}
   pip_state.installed:
-    pkgs: {{ salt_settings.git_installs|json }}
+    - pkgs: {{ salt_settings.git_installs|json }}
     {% endif %}
   file.recurse:
     - name: {{ salt_settings.config_path }}/master.d
