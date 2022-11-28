@@ -20,8 +20,8 @@ download-salt-minion:
                     {% else %}
     - skip_verify: True
                     {% endif %}
-    - user: root
-    - group: wheel
+    - user: {{ salt_settings.rootuser }}
+    - group: {{ salt_settings.rootgroup }}
     - mode: '0644'
     - unless:
       - test -n "{{ salt_settings.version }}" && '/opt/salt/bin/salt-minion --version=.*{{ salt_settings.version }}.*'
@@ -29,10 +29,13 @@ download-salt-minion:
       - macpackage: salt-minion
     - retry: {{ salt_settings.retry_options | json }}
             {%- elif "workaround https://github.com/saltstack/salt/issues/49348" %}
-  cmd.run:
-    - name: /usr/local/bin/brew install {{ salt_settings.salt_minion }}
-    - onlyif: test -x /usr/local/bin/brew
-    - runas: {{ salt_settings.rootuser }}
+  {% if salt_settings.install_packages %}
+  pkg.installed:
+    - name: {{ salt_settings.salt_minion }}
+    {%- if salt_settings.version is defined %}
+    - version: {{ salt_settings.version }}
+    {%- endif %}
+  {% endif %}
             {%- endif %}
 
 salt-minion-macos:
@@ -78,7 +81,7 @@ salt-minion:
         {%- endif %}
     {% endif %}
   file.recurse:
-    - name: {{ salt_settings.config_path }}/minion.d
+    - name: {{ salt_settings.config_path | path_join('minion.d') }}
     {%- if salt_settings.minion_config_use_TOFS %}
     - template: ''
     - source: {{ files_switch(['minion.d'],
@@ -97,7 +100,7 @@ salt-minion:
   service.{{ salt_settings.minion_service_details.state }}:
     - enable: {{ salt_settings.minion_service_details.enabled }}
     - name: {{ salt_settings.minion_service }}
-    {%- if grains.os_family == 'FreeBSD' %}
+    {%- if grains.os_family in ['FreeBSD', 'Gentoo'] %}
     - retry: {{ salt_settings.retry_options | json }}
     {%- endif %}
     - watch:
@@ -130,7 +133,7 @@ salt-minion:
             {%- if grains.os == 'MacOS' and salt_settings.salt_minion_pkg_source %}
       - macpackage: salt-minion
             {%- elif grains.os == 'MacOS' %}
-      - cmd: download-salt-minion
+      - pkg: download-salt-minion
             {%- else %}
       - pkg: salt-minion
             {%- endif %}
@@ -155,7 +158,7 @@ restart-salt-minion:
             {%- if grains.os == 'MacOS' and salt_settings.salt_minion_pkg_source %}
       - macpackage: salt-minion
             {%- elif grains.os == 'MacOS' %}
-      - cmd: download-salt-minion
+      - pkg: download-salt-minion
             {%- else %}
       - pkg: salt-minion
             {%- endif %}
@@ -183,7 +186,7 @@ remove-default-minion-conf-file:
 # clean up old _defaults.conf file if they have it around
 remove-old-minion-conf-file:
   file.absent:
-    - name: {{ salt_settings.config_path }}/minion.d/_defaults.conf
+    - name: {{ salt_settings.config_path | path_join('minion.d', '_defaults.conf') }}
 
     {% if grains.os == 'MacOS' %}
 remove-macpackage-salt:
@@ -191,3 +194,81 @@ remove-macpackage-salt:
     - name: /tmp/salt.pkg
     - force: True
     {% endif %}
+
+    {% if not salt_settings.minion_remove_config %}
+permissions-minion-config:
+  file.managed:
+    - name: {{ salt_settings.config_path | path_join('minion') }}
+    - user: {{ salt_settings.rootuser }}
+    - group:
+        {%- if grains['kernel'] in ['FreeBSD', 'OpenBSD', 'NetBSD'] %}
+        wheel
+        {%- else %}
+        {{ salt_settings.rootgroup }}
+        {%- endif %}
+    {%- if grains['kernel'] != 'Windows' %}
+    - mode: 640
+    {% endif %}
+    - replace: False
+    {% endif %}
+
+salt-minion-pki-dir:
+  file.directory:
+{% if 'pki_dir' in salt_settings.minion %}
+    - name: {{ salt_settings.minion.pki_dir }}
+{% else %}
+    - name: {{ salt_settings.config_path | path_join('pki', 'minion') }}
+{% endif %}
+    - user: {{ salt_settings.rootuser }}
+    - group:
+        {%- if grains['kernel'] in ['FreeBSD', 'OpenBSD', 'NetBSD'] %}
+        wheel
+        {%- else %}
+        {{ salt_settings.rootgroup }}
+        {%- endif %}
+    {%- if grains['kernel'] != 'Windows' %}
+    - mode: 700
+    {% endif %}
+    - makedirs: True
+
+permissions-minion.pem:
+  file.managed:
+{% if 'pki_dir' in salt_settings.minion %}
+    - name: {{ salt_settings.minion.pki_dir | path_join('minion.pem') }}
+{% else %}
+    - name: {{ salt_settings.config_path | path_join('pki', 'minion', 'minion.pem') }}
+{% endif %}
+    - user: {{ salt_settings.rootuser }}
+    - group:
+        {%- if grains['kernel'] in ['FreeBSD', 'OpenBSD', 'NetBSD'] %}
+        wheel
+        {%- else %}
+        {{ salt_settings.rootgroup }}
+        {%- endif %}
+    {%- if grains['kernel'] != 'Windows' %}
+    - mode: 400
+    {% endif %}
+    - replace: False
+    - require:
+      - file: salt-minion-pki-dir
+
+permissions-minion.pub:
+  file.managed:
+{% if 'pki_dir' in salt_settings.minion %}
+    - name: {{ salt_settings.minion.pki_dir | path_join('minion.pub') }}
+{% else %}
+    - name: {{ salt_settings.config_path | path_join('pki', 'minion', 'minion.pub') }}
+{% endif %}
+    - user: {{ salt_settings.rootuser }}
+    - group:
+        {%- if grains['kernel'] in ['FreeBSD', 'OpenBSD', 'NetBSD'] %}
+        wheel
+        {%- else %}
+        {{ salt_settings.rootgroup }}
+        {%- endif %}
+    {%- if grains['kernel'] != 'Windows' %}
+    - mode: 644
+    {% endif %}
+    - replace: False
+    - require:
+      - file: salt-minion-pki-dir
