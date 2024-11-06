@@ -11,6 +11,11 @@ salt-pkgrepo-install-saltstack-redhat:
     - enabled: 1
     - gpgcheck: 1
     - gpgkey: {{ salt_settings.key_url }}
+    {% if salt_settings.pkgrepo_extra_settings is defined -%}
+    {% for pkgrepo_setting, pkgrepo_setting_value in salt_settings.pkgrepo_extra_settings.items() -%}
+    - {{ pkgrepo_setting }}: {{ pkgrepo_setting_value }}
+    {% endfor %}
+    {% endif -%}
     {%- if grains['os']|lower in ['amazon'] %}
     - failovermethod: priority
     - priority: 10
